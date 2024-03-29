@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
         img = carve_seam(img, get_seam (to_sobel(to_greyscale(img, width, height), width, height)), width, height);
 
     if (lodepng::encode(argv[2], img, width, height)) {
-        cerr << "Error: output image could not be decoded.\n";
+        cerr << "Error: output image could not be encoded.\n";
         return 3;
     }
 }
