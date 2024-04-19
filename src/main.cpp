@@ -6,8 +6,7 @@
 
 using namespace std;
 
-// using unsigned chars to store integers in the range 0-255 in line with the lodepng standard
-typedef unsigned char channel;
+typedef unsigned char channel; // using unsigned chars to store 8-bit image channels in line with the lodepng standard
 
 class seam_carver {
     public:
@@ -26,7 +25,7 @@ class seam_carver {
         {
             if (lodepng::encode(filepath, img, width, height)) {
                 cerr << "Error: output image could not be decoded.\n";
-                exit(3);
+                exit(2);
             }
         }
 
@@ -34,29 +33,29 @@ class seam_carver {
         vector<channel> img;
         unsigned int width, height;
 
-        vector<channel> get_greyscale () // converts a vector of RGBA channels to greyscale pixels of a single channel
+        vector<channel> get_greyscale() // converts a vector of RGBA channels to greyscale pixels of a single channel
         {
-            vector<channel> ret (width * height);
+            size_t size {width * height};
+            vector<channel> ret (size);
 
-            for (size_t y {0}, row_channels {4 * width}; y < height; ++y)
-                for (size_t x {0}, rows_passed {y * row_channels}; x < width; ++x) {
-                    auto current_pixel {rows_passed + 4 * x};
-                    ret[current_pixel / 4] = (img[current_pixel] + img[current_pixel + 1] + img[current_pixel + 2]) / 3;
-                }
+            for (size_t i {0}; i < size; ++i) {
+                size_t times_4 {4 * i};
+                ret[i] = (img[times_4] + img[times_4 + 1] + img[times_4 + 2]) / 3; // since the original RGBA image has 4 channels and the greyscale image will have just one channel, the index of the ith pixel in the original image and its channels is 4 times the greyscale image's pixel index
+            }
 
             return ret;
         }
 
-        vector<vector<int>> get_sobel () // takes a vector of greyscale pixels and returns a 2D vector of ints containing the Sobel operator results for each pixel
+        vector<vector<int>> get_sobel() // takes a vector of greyscale pixels and returns a 2D vector of ints containing the Sobel operator results for each pixel
         {
             auto img_greyscale {get_greyscale()};
             vector<vector<int>> ret (height, vector<int> (width));
 
-            for (size_t y = 0; y < height; ++y) {
+            for (size_t y {0}; y < height; ++y) {
                 bool has_up   {y != 0},
                      has_down {y != height - 1};
 
-                for (size_t x = 0; x < width; ++x) {
+                for (size_t x {0}; x < width; ++x) {
                     bool has_left  {x != 0},
                          has_right {x != width - 1};
 
@@ -89,7 +88,7 @@ class seam_carver {
         {
             auto dp {get_sobel()};
 
-            size_t y_max {dp.size() - 1}, x_max {dp[0].size() - 1};
+            size_t y_max {height - 1}, x_max {width - 1};
             vector<vector<size_t>> predecessor (y_max, vector<size_t> (x_max + 1)); // stores the column position of the lowest-cost ongoing path which the current coordinate came from, e.g. predecessor[0][0] contains the column position that dp[1][0] came from
 
             size_t final_min; // stores the column of the pixel in the final row with the minimum path value
@@ -106,7 +105,7 @@ class seam_carver {
                     dp[y][0] += dp[y-1][current_min];
                     predecessor[y-1][0] = current_min;
 
-                    for (size_t x = 1; x < x_max; ++x) {
+                    for (size_t x {1}; x < x_max; ++x) {
                         current_min = min ({x-1, x, x+1}, min_predecessor);
                         dp[y][x] += dp[y-1][current_min], // all the neighbours below and directly to the right pixel aren't checked because their minimum paths haven't been calculated yet. the pixel immediately to the left isn't checked either because this would also reduce the height of the image
                         predecessor[y - 1][x] = current_min;
@@ -121,9 +120,11 @@ class seam_carver {
                 dp[y][0] += dp[y-1][final_min];
 
                 for (size_t x {1}; x < x_max; ++x) {
-                    auto min_pred {min ({x-1, x, x+1}, min_predecessor)};
-                    dp[y][x] += dp[y-1][min_pred], // all the neighbours below and directly to the right pixel aren't checked because their minimum paths haven't been calculated yet
-                    predecessor[y - 1][x] =  min_pred;
+                    {
+                        auto min_pred {min ({x-1, x, x+1}, min_predecessor)};
+                        dp[y][x] += dp[y-1][min_pred], // all the neighbours below and directly to the right pixel aren't checked because their minimum paths haven't been calculated yet
+                        predecessor[y - 1][x] =  min_pred;
+                    }
 
                     if (dp[y][final_min] > dp[y][x])
                         final_min = x;
@@ -148,13 +149,10 @@ class seam_carver {
         vector<channel> get_carved_image () // outputs a vector<channel> for lodepng to encode, containing a version of the image with one seam carved out
         {
             auto seam {get_seam()};
+            size_t row_channels {4 * width};
+            vector<channel> ret (height * (row_channels - 4));
 
-            size_t row_channels {4 * width},
-                   new_row_channels {row_channels - 4};
-
-            vector<channel> ret (height * new_row_channels);
-
-            for (size_t y {0}, ret_row {0}, img_row {0}; y < height; ++y, ret_row += new_row_channels, img_row += row_channels) // ret_row represents the current row in the return image, while img_row represents the current row in the original image. they differ in size because the return image has one less pixel than the original image in each of its rows.
+            for (size_t y {0}, img_row {0}; y < height; ++y, img_row += row_channels) // img_row represents the current row in the original image
                 for (size_t x {0}, move_forward {0}, current_seam {4 * seam[y]};; ++x) {
                     if (x == current_seam) // if the current x value is part of the seam we should remove...
                         move_forward = 4; // then change the move_forward counter to 4 so we can move 1 RGBA pixel ahead and skip the pixel in the seam
@@ -162,7 +160,7 @@ class seam_carver {
                     if (x + move_forward >= row_channels) // we should check if we need to break before updating the image but also after updating the move_forward variable. if we don't do this then a heap corruption will occur when the program attempts to remove a seam that ends at the last pixel of a row
                         break;
 
-                    ret[ret_row + x] = std::move(img[img_row + x + move_forward]);
+                    ret[img_row - 4 * y + x] = img[img_row + x + move_forward]; // we take away 4y from img_row because we have skipped 4 channels by removing 1 pixel from each of the y preceding rows
                 }
 
             return ret;
