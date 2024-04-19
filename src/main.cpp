@@ -84,7 +84,7 @@ class seam_carver {
             return ret;
         }
 
-        vector<size_t> get_seam () // takes a 2D vector of ints and finds the lowest energy path in it via dynamic programming, using the Sobel operator output vector to store its previous values
+        vector<size_t> get_seam() // takes a 2D vector of ints and finds the lowest energy path in it via dynamic programming, using the Sobel operator output vector to store its previous values
         {
             auto dp {get_sobel()};
 
@@ -146,7 +146,7 @@ class seam_carver {
             }
         }
 
-        vector<channel> get_carved_image () // outputs a vector<channel> for lodepng to encode, containing a version of the image with one seam carved out
+        vector<channel> get_carved_image() // outputs a vector<channel> for lodepng to encode, containing a version of the image with one seam carved out
         {
             auto seam {get_seam()};
             size_t row_channels {4 * width};
